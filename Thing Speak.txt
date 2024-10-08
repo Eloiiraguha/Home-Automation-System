@@ -1,0 +1,106 @@
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+#include <ThingSpeak.h>  // Include the ThingSpeak library
+
+// Replace with your WiFi credentials
+#define WIFI_SSID      "IE 1219"           // Your Wi-Fi network name (SSID)
+#define WIFI_PASS      "0987654321"    // Your Wi-Fi network password
+
+// Replace with your ThingSpeak credentials
+unsigned long CHANNEL_ID = 2670861;            // Your ThingSpeak channel ID
+const char *WRITE_API_KEY = "LAS9RZKA7ZN6ILLL";   // Your ThingSpeak write API key
+
+// Define the pin and type of DHT sensor
+#define DHTPIN 4                        // Pin D2 (GPIO 4) on NodeMCU connected to the DHT11 data pin
+#define DHTTYPE DHT11                   // DHT11 sensor type
+
+// Define pins for the MQ-2, PIR, and LDR sensors
+#define MQ2_PIN A0                      // Analog pin for MQ-2 gas sensor
+#define PIR_PIN 5                       // Pin D1 (GPIO 5) on NodeMCU connected to PIR sensor
+#define LDR_PIN A0                      // Use A0 (which is the same as GPIO 0) for LDR
+
+// Initialize the DHT sensor
+DHT dht(DHTPIN, DHTTYPE);               // Create a DHT object with the specified pin and type
+
+WiFiClient client;  // Create a WiFi client object
+
+void setup() {
+  // Start serial communication
+  Serial.begin(9600);                  // Initialize serial communication at 9600 baud
+
+  // Initialize DHT sensor
+  dht.begin();                         // Start the DHT sensor
+  Serial.println("System Is Initializing!");
+  delay(1000);                        // Small delay for initialization
+
+  // Set up PIR sensor pin
+  pinMode(PIR_PIN, INPUT);             // Set PIR_PIN as an input
+
+  // Connect to Wi-Fi
+  Serial.print("Connecting to ");
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("Connected to WiFi");
+
+  // Initialize ThingSpeak
+  ThingSpeak.begin(client);  // Initialize ThingSpeak client
+}
+
+void loop() {
+  // Read humidity and temperature from DHT11 sensor
+  float humidity = dht.readHumidity();   // Read the humidity value from the DHT sensor
+  float temperature = dht.readTemperature();  // Read the temperature value from the DHT sensor
+
+  // Check if any reads failed
+  if (isnan(humidity) || isnan(temperature)) {  // Check if the readings are not numbers (NaN)
+    Serial.println("Failed to read from DHT sensor!");  // Print an error message if readings failed
+    return;  // Exit the loop early if there was an error
+  }
+
+  // Read values from the MQ-2, PIR, and LDR sensors
+  int mq2Value = analogRead(MQ2_PIN);         // Read the MQ-2 value
+  int pirValue = digitalRead(PIR_PIN);         // Read the PIR motion sensor value
+  int ldrValue = analogRead(LDR_PIN);          // Read the LDR value
+
+  // Print the sensor values to the Serial Monitor
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.print(" %\t");
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  Serial.print("PIR: ");
+  Serial.print(pirValue);
+  Serial.print("\tLDR: ");
+  Serial.println(ldrValue);
+  Serial.print("MQ-2: ");
+  Serial.println(mq2Value);
+
+  // Send data to ThingSpeak
+  ThingSpeak.setField(1, temperature);  // Set field 1 for temperature
+  ThingSpeak.setField(2, humidity);     // Set field 2 for humidity
+  ThingSpeak.setField(3, pirValue);     // Set field 3 for PIR sensor
+  ThingSpeak.setField(4, ldrValue);     // Set field 4 for LDR
+  ThingSpeak.setField(5, mq2Value);     // Set field 5 for MQ-2
+
+  // Write the fields to ThingSpeak
+  int x = ThingSpeak.writeFields(CHANNEL_ID, WRITE_API_KEY);
+
+  if (x == 200) {
+    Serial.println("Data sent to ThingSpeak successfully");
+  } else {
+    Serial.print("Failed to send data to ThingSpeak. Error code: ");
+    Serial.println(x);  // Print error code if sending fails
+  }
+
+  // Wait a bit before the next read
+  delay(16000);                          // Delay for 16 seconds before the next loop iteration
+}
